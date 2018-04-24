@@ -36,7 +36,8 @@ ESCAPE_SEQUENCE_RE = re.compile(r'''
     | \\[\\'"abfnrtv]  # Single-character escapes
     )''', re.UNICODE | re.VERBOSE)
 
-SKIP_RE = re.compile(r'\s+|#.*$|//.*$|/\*(.|\n)*?\*/', re.MULTILINE)
+COMMENT_RE = re.compile(r'#.*$|//.*$|/\*(.|\n)*?\*/', re.MULTILINE)
+SKIP_RE = re.compile(r'\s+', re.MULTILINE)
 UNPRINTABLE_CHARACTER_RE = re.compile(r'[\x00-\x1F\x7F]')
 
 
@@ -171,6 +172,19 @@ class Tokenizer:
         '''Yield tokens from the input string or throw ConfigParseError'''
         pos = 0
         while pos < len(string):
+            m = COMMENT_RE.match(string, pos=pos)
+            if m:
+                skip_lines = m.group(0).split('\n')
+                yield Token('comment', m.group(0), self.filename, self.row, self.column)
+                if len(skip_lines) > 1:
+                    self.row += len(skip_lines) - 1
+                    self.column = 1 + len(skip_lines[-1])
+                else:
+                    self.column += len(skip_lines[0])
+
+                pos = m.end()
+                continue
+
             m = SKIP_RE.match(string, pos=pos)
             if m:
                 skip_lines = m.group(0).split('\n')
@@ -354,6 +368,10 @@ class Parser:
             result[s[0]] = s[1]
 
     def setting(self):
+        comment = self.tokens.accept('comment')
+        if comment:
+            return ('comment', comment.text)
+
         name = self.tokens.accept('name')
         if name is None:
             return None
@@ -369,7 +387,7 @@ class Parser:
         return (name.text, value)
 
     def value(self):
-        acceptable = [self.scalar_value, self.array, self.list, self.group]
+        acceptable = [self.comment, self.scalar_value, self.array, self.list, self.group]
         return self._parse_any_of(acceptable)
 
     def scalar_value(self):
@@ -424,6 +442,18 @@ class Parser:
             values.append(t.value)
 
         return ''.join(values)
+
+    def comment(self):
+        t_first = self.tokens.accept('comment')
+        if t_first is None:
+            return None
+
+        while True:
+            t = self.tokens.accept('comment')
+            if t is None:
+                break
+
+        return None
 
     def _create_value_node(self, tokentype):
         t = self.tokens.accept(tokentype)
