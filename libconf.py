@@ -351,7 +351,7 @@ class Parser:
             if s is None:
                 return result
 
-            result[s[0]] = s[1]
+            result[s[0].text] = {'token' : s[0], 'value' : s[1]}
 
     def setting(self):
         name = self.tokens.accept('name')
@@ -366,7 +366,7 @@ class Parser:
 
         self.tokens.accept(';', ',')
 
-        return (name.text, value)
+        return (name, value)
 
     def value(self):
         acceptable = [self.scalar_value, self.array, self.list, self.group]
@@ -508,7 +508,7 @@ def loads(string, filename=None, includedir=''):
     try:
         f = io.StringIO(string)
     except TypeError:
-        raise TypeError("libconf.loads() input string must by unicode")
+        raise TypeError("libconf.loads() input string must be unicode")
 
     return load(f, filename=filename, includedir=includedir)
 
