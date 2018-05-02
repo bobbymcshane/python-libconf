@@ -126,6 +126,12 @@ class ConfigBlock():
         self.value = block
         self.end = end
 
+    def start_token(self):
+        return self.start
+
+    def end_token(self):
+        return self.end
+
     def __getattr__(self, attr):
         return self.value.__getattr__(attr)
 
@@ -164,6 +170,12 @@ class ConfigSetting():
         self.operator = operator
         self.value = value
         self.terminal = terminal
+
+    def start_token(self):
+        return self.name
+
+    def end_token(self):
+        return self.terminal
 
     def __getattr__(self, attr):
         return self.value.__getattr__(attr)
