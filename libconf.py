@@ -84,7 +84,7 @@ class Token(object):
         self.row = row
         self.column = column
 
-    def __str__(self):
+    def __repr__(self):
         return "%r in %r, row %d, column %d" % (
             self.text, self.filename, self.row, self.column)
 
@@ -117,6 +117,65 @@ class StrToken(Token):
     def __init__(self, *args, **kwargs):
         super(StrToken, self).__init__(*args, **kwargs)
         self.value = decode_escapes(self.text[1:-1])
+
+
+class ConfigBlock():
+    '''Class for libcfg groups and lists'''
+    def __init__(self, start, block, end):
+        self.start = start
+        self.value = block
+        self.end = end
+
+    def __getattr__(self, attr):
+        return getattr(self.value, attr)
+
+    def __itr__(self):
+        return self.value.__itr__()
+
+    def __getitem__(self, key):
+        return self.value.__getitem__(key)
+
+    def __repr__(self):
+        return repr(self.value)
+
+class ConfigListElems():
+    '''Class for libcfg list elements'''
+    def __init__(self, elements, separators=None):
+        self.value = elements
+        self.separators = separators
+
+    def __getattr__(self, attr):
+        return getattr(self.value, attr)
+
+    def __itr__(self):
+        return self.value.__itr__()
+
+    def __getitem__(self, key):
+        return self.value.__getitem__(key)
+
+    def __repr__(self):
+        return repr(self.value)
+
+
+class ConfigSetting():
+    '''Class to hold position information for libcfg settings'''
+    def __init__(self, name, operator, value, terminal):
+        self.name = name
+        self.operator = operator
+        self.value = value
+        self.terminal = terminal
+
+    def __getattr__(self, attr):
+        return getattr(self.value, attr)
+
+    def __itr__(self):
+        return self.value.__itr__()
+
+    def __getitem__(self, key):
+        return self.value.__getitem__(key)
+
+    def __repr__(self):
+        return repr(self.value)
 
 
 def compile_regexes(token_map):
@@ -351,22 +410,22 @@ class Parser:
             if s is None:
                 return result
 
-            result[s[0].text] = {'token' : s[0], 'value' : s[1]}
+            result[s.name.text] = s
 
     def setting(self):
         name = self.tokens.accept('name')
         if name is None:
             return None
 
-        self.tokens.expect(':', '=')
+        operator = self.tokens.expect(':', '=')
 
         value = self.value()
         if value is None:
             self.tokens.error("expected a value")
 
-        self.tokens.accept(';', ',')
+        terminal = self.tokens.accept(';', ',')
 
-        return (name, value)
+        return ConfigSetting(name, operator, value, terminal)
 
     def value(self):
         acceptable = [self.scalar_value, self.array, self.list, self.group]
@@ -379,7 +438,7 @@ class Parser:
         return self._parse_any_of(acceptable)
 
     def value_list_or_empty(self):
-        return tuple(self._comma_separated_list_or_empty(self.value))
+        return self._comma_separated_list_or_empty(self.value)
 
     def scalar_value_list_or_empty(self):
         return self._comma_separated_list_or_empty(self.scalar_value)
@@ -442,6 +501,7 @@ class Parser:
 
     def _comma_separated_list_or_empty(self, nonterminal):
         values = []
+        separators = []
         first = True
         while True:
             v = nonterminal()
@@ -452,17 +512,20 @@ class Parser:
                     self.tokens.error("expected value after ','")
 
             values.append(v)
-            if not self.tokens.accept(','):
-                return values
+            separator = self.tokens.accept(',')
+            if not separator:
+                return ConfigListElems(values, separators)
+            separators.append(separator)
 
             first = False
 
     def _enclosed_block(self, start, nonterminal, end):
-        if not self.tokens.accept(start):
+        first = self.tokens.accept(start)
+        if not first:
             return None
-        result = nonterminal()
-        self.tokens.expect(end)
-        return result
+        block = nonterminal()
+        last = self.tokens.expect(end)
+        return ConfigBlock(first, block, last)
 
 
 def load(f, filename=None, includedir=''):
@@ -549,6 +612,9 @@ def dump_value(key, value, f, indent=0):
     Otherwise, output has ``key = value`` format.
     '''
 
+    while isinstance(value, ConfigListElems) or isinstance(value, ConfigBlock) or isinstance(value, ConfigSetting):
+        value = value.value
+
     spaces = ' ' * indent
 
     if key is None:
@@ -557,7 +623,6 @@ def dump_value(key, value, f, indent=0):
     else:
         key_prefix = key + ' = '
         key_prefix_nl = key + ' =\n' + spaces
-
     if isinstance(value, dict):
         f.write(u'{}{}{{\n'.format(spaces, key_prefix_nl))
         dump_dict(value, f, indent + 4)
