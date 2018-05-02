@@ -127,7 +127,7 @@ class ConfigBlock():
         self.end = end
 
     def __getattr__(self, attr):
-        return getattr(self.value, attr)
+        return self.value.__getattr__(attr)
 
     def __itr__(self):
         return self.value.__itr__()
@@ -145,7 +145,7 @@ class ConfigListElems():
         self.separators = separators
 
     def __getattr__(self, attr):
-        return getattr(self.value, attr)
+        return self.value.__getattr__(attr)
 
     def __itr__(self):
         return self.value.__itr__()
@@ -166,7 +166,7 @@ class ConfigSetting():
         self.terminal = terminal
 
     def __getattr__(self, attr):
-        return getattr(self.value, attr)
+        return self.value.__getattr__(attr)
 
     def __itr__(self):
         return self.value.__itr__()
@@ -176,6 +176,9 @@ class ConfigSetting():
 
     def __repr__(self):
         return repr(self.value)
+
+    def __str__(self):
+        return str(self.name)
 
 
 def compile_regexes(token_map):
@@ -627,14 +630,10 @@ def dump_value(key, value, f, indent=0):
         f.write(u'{}{}{{\n'.format(spaces, key_prefix_nl))
         dump_dict(value, f, indent + 4)
         f.write(u'{}}}'.format(spaces))
-    elif isinstance(value, tuple):
+    elif isinstance(value, (tuple, list)):
         f.write(u'{}{}(\n'.format(spaces, key_prefix_nl))
         dump_collection(value, f, indent + 4)
         f.write(u'\n{})'.format(spaces))
-    elif isinstance(value, list):
-        f.write(u'{}{}[\n'.format(spaces, key_prefix_nl))
-        dump_collection(value, f, indent + 4)
-        f.write(u'\n{}]'.format(spaces))
     elif isstr(value):
         f.write(u'{}{}{}'.format(spaces, key_prefix, dump_string(value)))
     elif isint(value):
@@ -688,13 +687,14 @@ def dump(cfg, f):
 
     ``f`` must be a ``file``-like object with a ``write()`` method.
     '''
+    if cfg is None:
+        return
 
-    if not isinstance(cfg, dict):
-        raise ConfigSerializeError(
-                'dump() requires a dict as input, not %r of type %r' %
-                (cfg, type(cfg)))
-
-    dump_dict(cfg, f, 0)
+    if isinstance(cfg, dict):
+        dump_dict(cfg, f, 0)
+    else:
+        key = cfg.name.text if isinstance(cfg, ConfigSetting) else None
+        dump_value(key, cfg, f, 0)
 
 
 # main(): small example of how to use libconf
